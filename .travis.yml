@@ -1,0 +1,3 @@
+language: haskell
+install:  sh ./builddep.sh
+
