@@ -68,8 +68,8 @@ createDirIfNotExist fp =
 makePDF (x,y) = system $ "/home/wavewave/repo/src/hoodle-parser/examples/parsetest atto " ++ x ++ " " ++ y 
 
 main = do 
-  args <- getArgs 
-  let newbase = args !! 0
+  -- args <- getArgs 
+  -- let newbase = args !! 0
   cwd <- getCurrentDirectory
   (r :/ r') <- build cwd
   let files = catMaybes . map takeFile . flattenDir $ r'

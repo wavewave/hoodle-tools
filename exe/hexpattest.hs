@@ -24,7 +24,8 @@
      -- strings we're using so we need to tell it explicitly with a type signature.
      let (xml, mErr) = parse defaultParseOptions inputText :: (UNode String, Maybe XMLParseError)
      -- Process document before handling error, so we get lazy processing.
-     L.hPutStr stdout $ format xml
+     -- L.hPutStr stdout (show xml) -- $ format xml
+     print xml
      putStrLn ""
      case mErr of
          Nothing -> return ()
