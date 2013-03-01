@@ -11,6 +11,7 @@ import           Data.Time.Clock
 import           Data.Time.Clock.POSIX
 import           Data.Digest.Pure.MD5
 import           System.Directory
+import           System.FilePath
 import           System.Environment 
 import           System.IO
 import           System.Posix.Files 
