@@ -104,10 +104,11 @@ action tref ev = do
     liftIO (threadDelay 1000000)
     liftIO (print ev)
     homedir <- liftIO $ getHomeDirectory
-    r <- liftIO $ readProcess "find" [homedir FP.</> "Dropbox" FP.</> "hoodle","-name","*.hdl","-mmin","-1","-print"] "" 
+    r <- liftIO $ readProcess "find" [homedir FP.</> "Dropbox" FP.</> "hoodle","-name","*.hdl","-amin","-1","-print"] "" 
     let nfilelst = lines r 
+    liftIO $ print nfilelst 
+    liftIO $ mapM_ putStrLn nfilelst 
     pathmap <- getFileIDList
-    -- liftIO $ print pathmap 
     idmd5lst <- mapM getIDMD5 nfilelst
     let fileidmd5lst =  zip nfilelst idmd5lst 
     let npathmap = foldr (\(f,(i,s)) m -> M.adjust (const (s,f)) i m) pathmap fileidmd5lst 
