@@ -7,6 +7,7 @@ import Data.Attoparsec
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.ByteString.Base64
+import qualified Data.Map as M
 import Graphics.Rendering.Cairo
 import qualified Graphics.UI.Gtk.Poppler.Document as Poppler 
 -- import Graphics.UI.Gtk.Poppler.Page as PopplerPage
@@ -22,26 +23,55 @@ import Text.Hoodle.Builder
 -- import Graphics.Hoodle.Render.SimpleNew 
 -- import Graphics.Hoodle.Render.Simple 
 
+splitfunc :: String -> (String,String)
+splitfunc str = 
+  let (str1,rest1) = break (== ' ') str 
+      (str2,rest2) = break (== ' ') (tail rest1)
+      str3 = read (tail rest2)
+  in (str1,str3)
+
+
 -- | 
 main :: IO ()   
 main = do 
   args <- getArgs 
-  when (length args /= 2) $ error "bkgpdfreplace pdffile hdlfile"  
+  when (length args /= 2) $ error "bkgpdfreplace hdlid pdffile"   
   initGUI
-  let pdffile = args !! 0
-      hdlfile = args !! 1 
-      (_,hdlfilename) = splitFileName hdlfile
-  cdir <- getCurrentDirectory 
-  putStrLn $ "back up your file to " ++ (cdir </> hdlfilename)
-  copyFile hdlfile (cdir </> hdlfilename) 
+  let hdlid = args !! 0 
+      pdffile = args !! 1
+  homedir <- getHomeDirectory
+  let hdldb = homedir </> "Dropbox" </> "hoodleiddb.dat"
 
-  mh <- attoparsec (args !! 1)
-  case mh of 
-    Nothing -> print "not parsed"
-    Just hoo -> do
-      nhoo <- embedPDFInHoodle pdffile hoo 
-      L.writeFile hdlfile . builder $ nhoo 
- 
+  b <- doesFileExist hdldb 
+  when (not b) $ error ("no " ++ hdldb)
+
+  dbstr <- readFile hdldb
+  let ls = lines dbstr 
+      alist = map splitfunc ls
+      pathmap = M.fromList alist 
+      mpath = M.lookup hdlid pathmap 
+  -- mapM_ print alist -- pathmap 
+  -- print mpath 
+  case mpath of 
+    Nothing -> error (" no such id = " ++ hdlid )
+    Just hdlfile -> do 
+      let (_,hdlfilename) = splitFileName hdlfile
+      cdir <- getCurrentDirectory 
+      putStrLn $ "back up your file to " ++ (cdir </> hdlfilename)
+      copyFile hdlfile (cdir </> hdlfilename) 
+
+      mh <- attoparsec hdlfile
+      case mh of 
+        Nothing -> print "not parsed"
+        Just hoo -> do
+          nhoo <- embedPDFInHoodle pdffile hoo 
+          L.writeFile hdlfile . builder $ nhoo 
+
+
+-- 45041c0b-43bc-4608-b059-4e3045875d2f
+
+{-
+-}
 
 createPage :: Dimension -> Int -> Page
 createPage dim n = let bkg = BackgroundEmbedPdf "embedpdf" n 
