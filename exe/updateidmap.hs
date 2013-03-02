@@ -111,7 +111,7 @@ action tref ev = do
     pathmap <- getFileIDList
     idmd5lst <- mapM getIDMD5 nfilelst
     let fileidmd5lst =  zip nfilelst idmd5lst 
-    let npathmap = foldr (\(f,(i,s)) m -> M.adjust (const (s,f)) i m) pathmap fileidmd5lst 
+    let npathmap = foldr (\(f,(i,s)) m -> M.insert i (s,f) m) pathmap fileidmd5lst 
     -- mapM_ (liftIO . print) (M.toList npathmap)
     let dbfile = homedir FP.</> "Dropbox" FP.</> "hoodleiddb.dat"
         
