@@ -276,8 +276,19 @@ main = do
       hdlfiles = filter isHdl files 
       pairs = map ((,) <$> id
                    <*> (buildpath </>) . flip replaceExtension "pdf" . makeRelative rootpath ) hdlfiles 
-  mapM_ (createPdf urlbase rootpath) pairs
+  updatedpairs <- filterM isUpdated pairs 
+  mapM_ (createPdf urlbase rootpath) updatedpairs
 
+isUpdated :: (FilePath,FilePath) -> IO Bool 
+isUpdated (ofp,nfp) = do 
+  b <- doesFileExist nfp
+  if not b 
+    then return True
+    else do 
+      otime <- getModificationTime ofp
+      ntime <- getModificationTime nfp 
+      return (otime > ntime)
+  
 
 
 
