@@ -14,6 +14,7 @@ import qualified Data.ByteString.Lazy as BSL
 import Data.Int
 import Data.List 
 import Data.UUID.V4
+import Network.HTTP.Base
 import System.Directory
 import System.FilePath 
 import System.Environment
@@ -186,10 +187,15 @@ makeAnnot (S.Dim pw ph) lnk =
       yi = floor y 
       wi = floor w 
       hi = floor h
-      annot = Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
-                    , annot_border = (16,16,1) 
-                    , annot_url = B.unpack (S.link_location lnk) }
-  in annot 
+      fp = (B.unpack . S.link_location) lnk 
+      (dir,fn) = splitFileName fp 
+      (fb,ext) = splitExtension fn 
+  in Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
+           , annot_border = (16,16,1) 
+           , annot_url = "file://" ++ dir </> urlEncode fb <.> "hdl"
+             -- "file:///home/wavewave/repo/gist/createlink/2013-04-02%2017:20:10.77225%20UTC.hdl" 
+       }
+
 
 
 
