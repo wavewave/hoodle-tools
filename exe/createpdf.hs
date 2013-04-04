@@ -14,16 +14,21 @@ import qualified Data.ByteString.Lazy as BSL
 import Data.Int
 import Data.List 
 import Data.UUID.V4
+import Graphics.UI.Gtk (initGUI)
 import Network.HTTP.Base
+import Pdf.Toolbox.Core
+import Pdf.Toolbox.Document
+import Pdf.Toolbox.Document.Internal.Types 
 import System.Directory
+import System.Directory.Tree 
 import System.FilePath 
 import System.Environment
 import System.IO
 import qualified System.IO.Streams as Streams
--- 
-import Pdf.Toolbox.Core
-import Pdf.Toolbox.Document
-import Pdf.Toolbox.Document.Internal.Types 
+-- import System.Posix.Files
+-- import System.Posix.IO
+-- import System.Posix.Process 
+import System.Process
 -- 
 import qualified Data.Hoodle.Simple as S
 import Graphics.Hoodle.Render 
@@ -31,10 +36,30 @@ import Hoodle.Coroutine.File
 import Text.Hoodle.Parse.Attoparsec 
 
 
-import System.Posix.Files
--- import System.Posix.Files.ByteString 
-import System.Posix.IO
-import System.Posix.Process 
+-- 
+import Debug.Trace
+
+
+isFile (File _ _) = True
+isFile _ = False
+
+takeFile x | isFile x = (Just . file) x 
+takeFile x | otherwise = Nothing 
+
+
+
+
+-- | Get the relative url to the site root, for a given (absolute) url
+toSiteRoot :: String -> String
+toSiteRoot = emptyException . joinPath . map parent
+           . filter relevant . splitPath . takeDirectory
+  where
+    parent            = const ".."
+    emptyException [] = "."
+    emptyException x  = x
+    relevant "."      = False
+    relevant "/"      = False
+    relevant _        = True
 
 
 data Annot = Annot { annot_rect :: (Int, Int, Int, Int) 
@@ -108,7 +133,7 @@ writeObjectChildren (OArray (Array vals)) = do
   return $ OArray $ Array vals'
 writeObjectChildren o = return o
 
-
+-- | 
 writeStream :: Stream Int64 -> Pdf (StateT AppState (PdfWriter IO)) Ref
 writeStream s@(Stream dict _) = do
     len <- lookupDict "Length" dict >>= deref >>= fromObject >>= intValue
@@ -121,7 +146,7 @@ writeStream s@(Stream dict _) = do
     lift . lift . lift $ writeObject ref $ OStream $ Stream dict' content
     return ref
 
-
+-- |
 writeAnnot :: Annot -> Pdf (StateT AppState (PdfWriter IO)) Ref
 writeAnnot Annot{..} = do  
     annotIndex <- (lift.lift) nextFreeIndex
@@ -146,7 +171,7 @@ writeAnnot Annot{..} = do
     lift.lift.lift $ writeObject actionRef $ ODict actionDict 
     return annotRef 
 
-
+-- | 
 writePdfPageWithAnnot :: Maybe [Annot] -> Page -> Pdf (StateT AppState (PdfWriter IO)) ()
 writePdfPageWithAnnot mannots page@(Page _ pageDict) = do
   parentRef <- lift.lift $ gets stRootNode
@@ -176,9 +201,9 @@ writePdfPageWithAnnot mannots page@(Page _ pageDict) = do
                         , ("Annots", (OArray . Array . map ORef) annrefs) 
                         ]
 
-
-makeAnnot :: S.Dimension -> S.Link -> Annot
-makeAnnot (S.Dim pw ph) lnk = 
+-- | 
+makeAnnot :: S.Dimension -> (FilePath,FilePath) -> S.Link -> Annot
+makeAnnot (S.Dim pw ph) (rootpath,currpath) lnk = 
   let (x,y) = S.link_pos lnk
       S.Dim w h = S.link_dim lnk
       pwi = floor pw 
@@ -188,21 +213,26 @@ makeAnnot (S.Dim pw ph) lnk =
       wi = floor w 
       hi = floor h
       fp = (B.unpack . S.link_location) lnk 
-      (dir,fn) = splitFileName fp 
+      (dir,fn) = splitFileName fp
+      rdir = (toSiteRoot . makeRelative rootpath) currpath </> makeRelative rootpath dir  
       (fb,ext) = splitExtension fn 
-  in Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
+  in trace ( rdir )
+
+     $
+      Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
            , annot_border = (16,16,1) 
-           , annot_url = "file://" ++ dir </> urlEncode fb <.> "hdl"
+           , annot_url = rdir </> urlEncode fb <.> "pdf"
              -- "file:///home/wavewave/repo/gist/createlink/2013-04-02%2017:20:10.77225%20UTC.hdl" 
        }
 
 
 
-
-writePdfFile :: FilePath 
+-- | 
+writePdfFile :: (FilePath,FilePath)   -- ^ (root path, curr path)
+             -> FilePath    -- ^ pdf file 
              -> [(Int,[S.Link])]
              -> StateT AppState (PdfWriter IO) ()
-writePdfFile path nlnks = do
+writePdfFile (rootpath,currpath) path nlnks = do
   handle <- liftIO $ openBinaryFile path ReadMode
   res <- runPdfWithHandle handle knownFilters $ do
     encrypted <- isEncrypted
@@ -212,7 +242,7 @@ writePdfFile path nlnks = do
     forM_ [0..count-1] $ \i -> do
       page <- pageNodePageByNum root i
       let dim = S.Dim 612.0 792.0 
-      let mannots = fmap (map (makeAnnot dim)) (lookup (i+1) nlnks) 
+      let mannots = fmap (map (makeAnnot dim (rootpath,currpath))) (lookup (i+1) nlnks) 
       writePdfPageWithAnnot mannots page
   when (isLeft res) $ error $ show res
   liftIO $ hClose handle
@@ -223,66 +253,55 @@ getLinks pg = do
   S.ItemLink lnk <- view S.items l
   return lnk 
 
+isHdl = ( == ".hdl") <$> takeExtension 
 
+-- replaceExtension :: String -> FilePath -> FilePath 
+-- replaceExtension ext fp = let (fbase,_) = splitExtension fp in fbase <.> ext 
 
 main :: IO ()
 main = do
+  initGUI 
   args <- getArgs 
-  let fn = args !! 0 
+  let rootpath = args !! 0
+      buildpath = args !! 1 
+      -- fn = args !! 1 
+  (r :/ r') <- build rootpath 
+  let files = catMaybes . map takeFile . flattenDir $ r' 
+      hdlfiles = filter isHdl files 
+      pairs = map ((,) <$> id
+                   <*> (buildpath </>) . flip replaceExtension "pdf" . makeRelative rootpath ) hdlfiles 
 
-  bstr <- B.readFile fn 
-  case parseOnly hoodle bstr of 
-    Left str -> error str 
-    Right hdl -> do
-      let npgs = zip [1..] (view S.pages hdl)
-          npglnks = map ((,) <$> fst <*> getLinks . snd) npgs  
-      rhdl <- cnstrctRHoodle hdl 
-      let fp = "testtemp.pdf"
-      renderjob rhdl fp
-      runPdfWriter Streams.stdout $ do 
-        writePdfHeader
-        deleteObject (Ref 0 65535) 0 
-        flip evalStateT initialAppState $ do 
-         index <- nextFreeIndex 
-         modify $ \st -> st { stRootNode = Ref index 0} 
-         writePdfFile fp npglnks
-         writeTrailer
+  -- print hdlfiles 
+  -- print pairs 
+  mapM_ (createPdf rootpath) pairs
 
 
-{-
--- | 
-checkPipe :: FilePath -> IO ()
-checkPipe fp = untilM_ (threadDelay 10000) (fileExist fp) 
 
--- | 
-mkTmpFileName :: IO FilePath 
-mkTmpFileName = do
-  tdir <- getTemporaryDirectory 
-  tuuid <- nextRandom
-  return $ tdir </> show tuuid <.> "fifo"
 
--- | 
-existThenRemove :: FilePath -> IO () 
-existThenRemove fp = fileExist fp >>= \b -> when b (removeLink fp) 
+createPdf :: FilePath -> (FilePath,FilePath) -> IO ()
+createPdf rootpath (fn,ofn) = do 
+  let (odir,_) = splitFileName ofn 
+  b <- doesDirectoryExist odir
+  when (not b) $ system ("mkdir -p " ++ odir) >> return () 
+  let (currpath,_) = splitFileName fn
+  Streams.withFileAsOutput ofn $ \ostr -> do 
+    bstr <- B.readFile fn 
+    case parseOnly hoodle bstr of 
+      Left str -> error str 
+      Right hdl -> do
+        let npgs = zip [1..] (view S.pages hdl)
+            npglnks = map ((,) <$> fst <*> getLinks . snd) npgs  
+        rhdl <- cnstrctRHoodle hdl 
+        tempfile <- (</>) <$> getTemporaryDirectory <*> liftM show nextRandom
+        renderjob rhdl tempfile
+        runPdfWriter ostr $ do 
+          writePdfHeader
+          deleteObject (Ref 0 65535) 0 
+          flip evalStateT initialAppState $ do 
+            index <- nextFreeIndex 
+            modify $ \st -> st { stRootNode = Ref index 0} 
+            writePdfFile (rootpath,currpath) tempfile npglnks
+            writeTrailer
+        removeFile tempfile 
 
--- |
-pipeAction :: IO () -> (B.ByteString -> IO a) -> IO a 
-pipeAction sender receiver = pipeActionWith sender (receiver <=< B.readFile)
-
--- |
-pipeActionWith :: IO () -> (FilePath -> IO a) -> IO a 
-pipeActionWith sender receiverf = do 
-  filename <- mkTmpFileName 
-  existThenRemove filename 
-  createNamedPipe filename (unionFileModes ownerReadMode ownerWriteMode)
-  forkProcess $ do  
-    fd <- openFd filename WriteOnly Nothing defaultFileFlags
-    dupTo fd stdOutput 
-    closeFd fd
-    sender 
-    hFlush stdout 
-  r <- checkPipe filename >> receiverf filename  
-  removeLink filename  
-  return r 
--}
 
