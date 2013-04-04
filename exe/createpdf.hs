@@ -202,8 +202,8 @@ writePdfPageWithAnnot mannots page@(Page _ pageDict) = do
                         ]
 
 -- | 
-makeAnnot :: S.Dimension -> (FilePath,FilePath) -> S.Link -> Annot
-makeAnnot (S.Dim pw ph) (rootpath,currpath) lnk = 
+makeAnnot :: S.Dimension -> String -> (FilePath,FilePath) -> S.Link -> Annot
+makeAnnot (S.Dim pw ph) urlbase (rootpath,currpath) lnk = 
   let (x,y) = S.link_pos lnk
       S.Dim w h = S.link_dim lnk
       pwi = floor pw 
@@ -214,25 +214,24 @@ makeAnnot (S.Dim pw ph) (rootpath,currpath) lnk =
       hi = floor h
       fp = (B.unpack . S.link_location) lnk 
       (dir,fn) = splitFileName fp
-      rdir = (toSiteRoot . makeRelative rootpath) currpath </> makeRelative rootpath dir  
+      -- rdir = (toSiteRoot . makeRelative rootpath) currpath </> makeRelative rootpath dir  
+      rdir = makeRelative rootpath dir 
       (fb,ext) = splitExtension fn 
-  in trace ( rdir )
-
-     $
-      Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
+  in  Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
            , annot_border = (16,16,1) 
-           , annot_url = rdir </> urlEncode fb <.> "pdf"
+           , annot_url = urlbase </> rdir </> urlEncode fb <.> "pdf"
              -- "file:///home/wavewave/repo/gist/createlink/2013-04-02%2017:20:10.77225%20UTC.hdl" 
        }
 
 
 
 -- | 
-writePdfFile :: (FilePath,FilePath)   -- ^ (root path, curr path)
+writePdfFile :: String -- ^ url base 
+             -> (FilePath,FilePath)   -- ^ (root path, curr path)
              -> FilePath    -- ^ pdf file 
              -> [(Int,[S.Link])]
              -> StateT AppState (PdfWriter IO) ()
-writePdfFile (rootpath,currpath) path nlnks = do
+writePdfFile urlbase (rootpath,currpath) path nlnks = do
   handle <- liftIO $ openBinaryFile path ReadMode
   res <- runPdfWithHandle handle knownFilters $ do
     encrypted <- isEncrypted
@@ -242,7 +241,7 @@ writePdfFile (rootpath,currpath) path nlnks = do
     forM_ [0..count-1] $ \i -> do
       page <- pageNodePageByNum root i
       let dim = S.Dim 612.0 792.0 
-      let mannots = fmap (map (makeAnnot dim (rootpath,currpath))) (lookup (i+1) nlnks) 
+      let mannots = fmap (map (makeAnnot dim urlbase (rootpath,currpath))) (lookup (i+1) nlnks) 
       writePdfPageWithAnnot mannots page
   when (isLeft res) $ error $ show res
   liftIO $ hClose handle
@@ -262,8 +261,9 @@ main :: IO ()
 main = do
   initGUI 
   args <- getArgs 
-  let rootpath = args !! 0
-      buildpath = args !! 1 
+  let urlbase = args !! 0
+      rootpath = args !! 1
+      buildpath = args !! 2 
       -- fn = args !! 1 
   (r :/ r') <- build rootpath 
   let files = catMaybes . map takeFile . flattenDir $ r' 
@@ -273,13 +273,14 @@ main = do
 
   -- print hdlfiles 
   -- print pairs 
-  mapM_ (createPdf rootpath) pairs
+  mapM_ (createPdf urlbase rootpath) pairs
 
 
 
 
-createPdf :: FilePath -> (FilePath,FilePath) -> IO ()
-createPdf rootpath (fn,ofn) = do 
+createPdf :: String -> FilePath -> (FilePath,FilePath) -> IO ()
+createPdf urlbase rootpath (fn,ofn) = do 
+  putStrLn fn 
   let (odir,_) = splitFileName ofn 
   b <- doesDirectoryExist odir
   when (not b) $ system ("mkdir -p " ++ odir) >> return () 
@@ -300,7 +301,7 @@ createPdf rootpath (fn,ofn) = do
           flip evalStateT initialAppState $ do 
             index <- nextFreeIndex 
             modify $ \st -> st { stRootNode = Ref index 0} 
-            writePdfFile (rootpath,currpath) tempfile npglnks
+            writePdfFile urlbase (rootpath,currpath) tempfile npglnks
             writeTrailer
         removeFile tempfile 
 
