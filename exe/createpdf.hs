@@ -1,12 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 import Control.Applicative 
 import Control.Concurrent 
+import Control.Exception
 import Control.Lens (_1,_2,_3,_4,view,at )
 import Control.Monad
 import Control.Monad.Loops
 import Control.Monad.Trans
+import Control.Monad.Trans.Maybe 
 import Control.Monad.Trans.State 
 import Data.Attoparsec.Char8
 import qualified Data.ByteString.Char8 as B
@@ -202,8 +205,8 @@ writePdfPageWithAnnot mannots page@(Page _ pageDict) = do
                         ]
 
 -- | 
-makeAnnot :: S.Dimension -> String -> (FilePath,FilePath) -> S.Link -> Annot
-makeAnnot (S.Dim pw ph) urlbase (rootpath,currpath) lnk = 
+makeAnnot :: S.Dimension -> String -> (FilePath,FilePath) -> S.Link -> IO (Maybe Annot)
+makeAnnot (S.Dim pw ph) urlbase (rootpath,currpath) lnk = do 
   let (x,y) = S.link_pos lnk
       S.Dim w h = S.link_dim lnk
       pwi = floor pw 
@@ -212,17 +215,20 @@ makeAnnot (S.Dim pw ph) urlbase (rootpath,currpath) lnk =
       yi = floor y 
       wi = floor w 
       hi = floor h
-      fp = (B.unpack . S.link_location) lnk 
-      (dir,fn) = splitFileName fp
-      -- rdir = (toSiteRoot . makeRelative rootpath) currpath </> makeRelative rootpath dir  
-      rdir = makeRelative rootpath dir 
-      (fb,ext) = splitExtension fn 
-  in  Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
-           , annot_border = (16,16,1) 
-           , annot_url = urlbase </> rdir </> urlEncode fb <.> "pdf"
-             -- "file:///home/wavewave/repo/gist/createlink/2013-04-02%2017:20:10.77225%20UTC.hdl" 
-       }
-
+      linkpath = (B.unpack . S.link_location) lnk
+  b <- doesFileExist linkpath 
+  if b 
+    then do
+      fp <- canonicalizePath linkpath 
+      let (dir,fn) = splitFileName fp
+          -- rdir = (toSiteRoot . makeRelative rootpath) currpath </> makeRelative rootpath dir  
+          rdir = makeRelative rootpath dir 
+          (fb,ext) = splitExtension fn 
+      return (Just Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
+                         , annot_border = (16,16,1) 
+                         , annot_url = urlbase </> rdir </> urlEncode fb <.> "pdf"
+                         })
+    else return Nothing 
 
 
 -- | 
@@ -241,7 +247,9 @@ writePdfFile urlbase (rootpath,currpath) path nlnks = do
     forM_ [0..count-1] $ \i -> do
       page <- pageNodePageByNum root i
       let dim = S.Dim 612.0 792.0 
-      let mannots = fmap (map (makeAnnot dim urlbase (rootpath,currpath))) (lookup (i+1) nlnks) 
+      mannots <- runMaybeT $ do 
+                   lnks <- MaybeT . return $ lookup (i+1) nlnks
+                   liftM catMaybes . mapM (liftIO . makeAnnot dim urlbase (rootpath,currpath)) $ lnks 
       writePdfPageWithAnnot mannots page
   when (isLeft res) $ error $ show res
   liftIO $ hClose handle
@@ -254,8 +262,6 @@ getLinks pg = do
 
 isHdl = ( == ".hdl") <$> takeExtension 
 
--- replaceExtension :: String -> FilePath -> FilePath 
--- replaceExtension ext fp = let (fbase,_) = splitExtension fp in fbase <.> ext 
 
 main :: IO ()
 main = do
@@ -270,39 +276,38 @@ main = do
       hdlfiles = filter isHdl files 
       pairs = map ((,) <$> id
                    <*> (buildpath </>) . flip replaceExtension "pdf" . makeRelative rootpath ) hdlfiles 
-
-  -- print hdlfiles 
-  -- print pairs 
   mapM_ (createPdf urlbase rootpath) pairs
 
 
 
 
 createPdf :: String -> FilePath -> (FilePath,FilePath) -> IO ()
-createPdf urlbase rootpath (fn,ofn) = do 
-  putStrLn fn 
-  let (odir,_) = splitFileName ofn 
-  b <- doesDirectoryExist odir
-  when (not b) $ system ("mkdir -p " ++ odir) >> return () 
-  let (currpath,_) = splitFileName fn
-  Streams.withFileAsOutput ofn $ \ostr -> do 
-    bstr <- B.readFile fn 
-    case parseOnly hoodle bstr of 
-      Left str -> error str 
-      Right hdl -> do
-        let npgs = zip [1..] (view S.pages hdl)
-            npglnks = map ((,) <$> fst <*> getLinks . snd) npgs  
-        rhdl <- cnstrctRHoodle hdl 
-        tempfile <- (</>) <$> getTemporaryDirectory <*> liftM show nextRandom
-        renderjob rhdl tempfile
-        runPdfWriter ostr $ do 
-          writePdfHeader
-          deleteObject (Ref 0 65535) 0 
-          flip evalStateT initialAppState $ do 
-            index <- nextFreeIndex 
-            modify $ \st -> st { stRootNode = Ref index 0} 
-            writePdfFile urlbase (rootpath,currpath) tempfile npglnks
-            writeTrailer
-        removeFile tempfile 
+createPdf urlbase rootpath (fn,ofn) = catch action (\(e :: SomeException) -> print e)
+  where 
+    action = do 
+      putStrLn fn 
+      let (odir,_) = splitFileName ofn 
+      b <- doesDirectoryExist odir
+      when (not b) $ system ("mkdir -p " ++ odir) >> return () 
+      let (currpath,_) = splitFileName fn
+      Streams.withFileAsOutput ofn $ \ostr -> do 
+        bstr <- B.readFile fn 
+        case parseOnly hoodle bstr of 
+          Left str -> error str 
+          Right hdl -> do
+            let npgs = zip [1..] (view S.pages hdl)
+                npglnks = map ((,) <$> fst <*> getLinks . snd) npgs  
+            rhdl <- cnstrctRHoodle hdl 
+            tempfile <- (</>) <$> getTemporaryDirectory <*> liftM show nextRandom
+            renderjob rhdl tempfile
+            runPdfWriter ostr $ do 
+              writePdfHeader
+              deleteObject (Ref 0 65535) 0 
+              flip evalStateT initialAppState $ do 
+                index <- nextFreeIndex 
+                modify $ \st -> st { stRootNode = Ref index 0} 
+                writePdfFile urlbase (rootpath,currpath) tempfile npglnks
+                writeTrailer
+            removeFile tempfile 
 
 
