@@ -4,7 +4,7 @@
 
 import Control.Applicative 
 import Control.Concurrent 
-import Control.Exception
+import Control.Exception hiding (try)
 import Control.Lens (_1,_2,_3,_4,view,at )
 import Control.Monad
 import Control.Monad.Loops
@@ -19,6 +19,7 @@ import Data.List
 import Data.UUID.V4
 import Graphics.UI.Gtk (initGUI)
 import Network.HTTP.Base
+import Network.URI
 import Pdf.Toolbox.Core
 import Pdf.Toolbox.Document
 import Pdf.Toolbox.Document.Internal.Types 
@@ -41,6 +42,33 @@ import Text.Hoodle.Parse.Attoparsec
 
 -- 
 import Debug.Trace
+
+
+data UrlPath = FileUrl FilePath | HttpUrl String 
+             deriving (Show,Eq)
+
+data T = N | F | H  deriving (Show,Eq)
+
+-- | 
+urlParse :: String -> Maybe UrlPath 
+urlParse str = 
+  if length str < 7 
+    then Just (FileUrl str) 
+    else 
+      let p = do b <- (try (string "file://" *> return F)  
+                       <|> try (string "http://" *> return H) 
+                       <|> (return N) )
+                 rem <- manyTill anyChar ((satisfy (inClass "\r\n") *> return ()) <|> endOfInput)
+                 return (b,rem) 
+          r = parseOnly p (B.pack str)
+      in case r of 
+           Left _ -> Nothing -- Just (FileUrl str) 
+           Right (b,f) -> case b of 
+                            N -> Just (FileUrl f)
+                            F -> Just (FileUrl (unEscapeString f))
+                            H -> Just (HttpUrl ("http://" ++ f))
+    
+
 
 
 isFile (File _ _) = True
@@ -216,20 +244,27 @@ makeAnnot (S.Dim pw ph) urlbase (rootpath,currpath) lnk = do
       wi = floor w 
       hi = floor h
       linkpath = (B.unpack . S.link_location) lnk
-  b <- doesFileExist linkpath 
-  if b 
-    then do
-      fp <- canonicalizePath linkpath 
-      let (dir,fn) = splitFileName fp
-          -- rdir = (toSiteRoot . makeRelative rootpath) currpath </> makeRelative rootpath dir  
-          rdir = makeRelative rootpath dir 
-          (fb,ext) = splitExtension fn 
-      return (Just Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
-                         , annot_border = (16,16,1) 
-                         , annot_url = urlbase </> rdir </> urlEncode fb <.> "pdf"
-                         })
-    else return Nothing 
-
+  case urlParse linkpath of 
+    Nothing -> return Nothing 
+    Just urlpath -> do 
+      case urlpath of 
+        HttpUrl url -> return (Just Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
+                              , annot_border = (16,16,1) 
+                              , annot_url = url
+                              })
+        FileUrl path -> do 
+          b <- doesFileExist linkpath 
+          if b 
+            then do
+              fp <- canonicalizePath linkpath 
+              let (dir,fn) = splitFileName fp
+                  rdir = makeRelative rootpath dir 
+                  (fb,ext) = splitExtension fn 
+              return (Just Annot { annot_rect = (xi,phi-yi,xi+wi,phi-(yi+hi))
+                                 , annot_border = (16,16,1) 
+                                 , annot_url = urlbase </> rdir </> urlEncode fb <.> "pdf"
+                                 })
+            else return Nothing 
 
 -- | 
 writePdfFile :: String -- ^ url base 
