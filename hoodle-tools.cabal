@@ -147,4 +147,6 @@ Executable updateidmap
                    unix, 
                    pureMD5, 
                    fsnotify, 
-                   system-filepath
+                   system-filepath, 
+                   conduit >= 0.5, 
+                   resourcet

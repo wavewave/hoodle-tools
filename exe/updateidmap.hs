@@ -1,15 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import Control.Concurrent (threadDelay)
+import Control.Concurrent.MVar
 import           Control.Lens
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.Either 
+import Control.Monad.Trans.Resource
 import           Data.Attoparsec 
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as L
+import           Data.Conduit (($$))
+import           Data.Conduit.Binary (sourceFile,sourceLbs,sinkFile)
+import           Data.Conduit.List (consume)
 import           Data.Digest.Pure.MD5
 import Data.IORef
+import           Data.List (intercalate)
 import qualified Data.Map as M
 import Data.String 
 import Data.Time.Clock 
@@ -44,7 +50,16 @@ getFileIDList = do
   b <- liftIO $ doesFileExist fp 
   if b 
     then do 
-      str <- liftIO $ readFile fp 
+      -- tempdir <- liftIO $ getTemporaryDirectory
+      -- let tempiddb = tempdir FP.</> "hoodleiddb.dat"
+      -- liftIO $ copyFile fp tempiddb
+      -- str <- liftIO $ readFile tempiddb
+      bstr <- liftIO $ runResourceT (sourceFile fp $$ consume)
+      -- h <- liftIO $ openFile fp ReadMode 
+      -- bstr <- liftIO $ B.hGetContents h 
+      -- liftIO $ hClose h 
+      liftIO $ putStrLn $ " length = " ++ show (length bstr)
+      let str = (L.unpack . L.fromChunks) bstr 
       let ls = lines str 
           alist = map splitfunc ls
           pathmap = M.fromList alist
@@ -79,27 +94,35 @@ getIDMD5 fp  = do
 
 
 
-action :: IORef UTCTime -> Event -> IO () 
+action :: MVar UTCTime -> Event -> IO () 
 action tref ev = do
   e <- runEitherT $ do 
-    otime <- liftIO $ readIORef tref 
+    otime <- liftIO $ takeMVar tref 
     ctime <- liftIO $ getCurrentTime
     let dtime = diffUTCTime ctime otime 
-    when (dtime <= dtime_bound) $ left "too early"
+    when (dtime <= dtime_bound) $ liftIO (putMVar tref ctime) >> left "too early"
     liftIO (threadDelay 1000000)
     liftIO (print ev)
     homedir <- liftIO $ getHomeDirectory
     r <- liftIO $ readProcess "find" [homedir FP.</> "Dropbox" FP.</> "hoodle","-name","*.hdl","-mmin","-1","-print"] "" 
     let nfilelst = lines r 
     pathmap <- getFileIDList
-    liftIO $ print pathmap 
+    -- liftIO $ print pathmap 
     idmd5lst <- mapM getIDMD5 nfilelst
     let fileidmd5lst =  zip nfilelst idmd5lst 
     let npathmap = foldr (\(f,(i,s)) m -> M.adjust (const (s,f)) i m) pathmap fileidmd5lst 
     -- mapM_ (liftIO . print) (M.toList npathmap)
     let dbfile = homedir FP.</> "Dropbox" FP.</> "hoodleiddb.dat"
-    liftIO $ withFile  dbfile WriteMode $ \h -> do 
-      mapM_ (\(i,(s,f))->hPutStrLn h (i ++ " " ++ s ++ " " ++ show f)) (M.toList npathmap)
+        
+        rstr = (L.pack . intercalate "\n" . map (\(i,(s,f))->i++" "++s++" "++show f))
+                 (M.toList npathmap)
+    liftIO $ runResourceT $ sourceLbs rstr $$ sinkFile dbfile 
+    -- --     liftIO $ withFile  dbfile WriteMode $ \h -> do 
+    liftIO $ print "done"
+    -- liftIO $ modifyMVar_ tref (\_ -> return ctime) 
+    liftIO $ putMVar tref ctime
+    --       writeIORef tref ctime 
+    
   case e of 
     Left err -> putStrLn err 
     Right () -> return ()
@@ -109,7 +132,6 @@ action tref ev = do
         Nothing -> return () 
         Just pathmap -> do 
           -- system "idfilepathdb" 
-          writeIORef tref ctime 
 
 -}
 
@@ -118,7 +140,7 @@ action tref ev = do
 main :: IO () 
 main = do 
   ctime <- getCurrentTime 
-  tref <- newIORef ctime 
+  tref <- newMVar ctime 
 
   putStrLn "fsnotify test"
   homedir <- getHomeDirectory
