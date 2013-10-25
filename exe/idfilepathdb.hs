@@ -2,6 +2,7 @@
 -- 
 -- testing program for attoparsec and sax hoodle parser
 -- 
+import           Control.Applicative ((<$>))
 import           Control.Lens
 import           Control.Monad
 import           Control.Monad.Trans.Maybe 
@@ -15,6 +16,7 @@ import           Data.Time.Clock.POSIX
 import           Data.Digest.Pure.MD5
 import           System.Directory
 import           System.FilePath
+import           System.FilePath.Posix
 import           System.Environment 
 import           System.IO
 import           System.Posix.Files 
@@ -32,15 +34,20 @@ import Graphics.Hoodle.Render
 import Graphics.Hoodle.Render.Type
 import Graphics.Rendering.Cairo 
 
-data IdFilePathDB = AllFiles
-                  | SingleFile { singlefilename :: FilePath } 
+data IdFilePathDB = AllFiles { hoodlehome :: FilePath }
+                  | SingleFile { hoodlehome :: FilePath 
+                               , singlefilename :: FilePath } 
                   deriving (Show,Data,Typeable)
 
 allfiles :: IdFilePathDB 
-allfiles = AllFiles
+allfiles = 
+  AllFiles { hoodlehome = def &= typ "HOODLEHOME" &= argPos 0 } 
 
 singlefile :: IdFilePathDB 
-singlefile = SingleFile { singlefilename = def &= typ "FILEPATH" &= argPos 0 }
+singlefile = 
+  SingleFile { hoodlehome = def &= typ "HOODLEHOME" &= argPos 0 
+             , singlefilename = def &= typ "FILEPATH" &= argPos 1
+             }
 
 mode :: IdFilePathDB
 mode = modes [allfiles, singlefile] 
@@ -49,15 +56,14 @@ main :: IO ()
 main = do 
   params <- cmdArgs mode
   case params of 
-    AllFiles -> allfilework 
-    SingleFile fp -> singlefilework fp 
+    AllFiles hdir -> allfilework hdir 
+    SingleFile hdir fp -> singlefilework hdir fp 
   
   
-allfilework = do 
+allfilework hdir = do 
   homedir <- getHomeDirectory 
   r <- readProcess "find" [homedir </> "Dropbox" </> "hoodle","-name","*.hdl","-print"] "" 
-  withFile (homedir </> "Dropbox" </> "hoodleiddb.dat") WriteMode $ \h -> do 
-    mapM_ (onefile h) (lines r)
+  mapM_ (singlefilework hdir) (lines r)
 
 
 splitfunc :: String -> (String,(String,String))
@@ -67,25 +73,22 @@ splitfunc str =
       str3 = read (tail rest2)
   in (str1,(str2,str3))
 
-
-singlefilework fp = do 
+singlefilework hdir oldfp = do 
   homedir <- getHomeDirectory 
   tmpdir <- getTemporaryDirectory 
-  r <- readProcess "find" [homedir </> "Dropbox" </> "hoodle","-name","*.hdl","-print"] "" 
+  -- r <- readProcess "find" [hdir,"-name","*.hdl","-print"] "" 
   let origdbfile = homedir </> "Dropbox" </> "hoodleiddb.dat"
       tmpfile = tmpdir </> "hoodleiddb.dat"
   copyFile origdbfile tmpfile 
   
+  fp <- makeRelative hdir <$> canonicalizePath oldfp 
   str <- readFile tmpfile 
-  let -- makeassoc [x,y,z] = Just (x,(y,z))
-      -- makeassoc a = error (show a) -- Nothing 
-      assoclst = (map splitfunc . lines) str 
+  let assoclst = (map splitfunc . lines) str 
       assocmap = M.fromList assoclst 
-  --   mapM_ print lstr 
- 
+  
   let replacefunc n _ = Just n 
 
-  muuid <- checkHoodleIdMd5 fp 
+  muuid <- checkHoodleIdMd5 oldfp 
   let nmap = case muuid of 
                Nothing -> assocmap 
                Just (uuid,md5str) -> M.alter (replacefunc (md5str,fp)) uuid assocmap
@@ -106,6 +109,7 @@ checkHoodleIdMd5 fp = do
           md5str = show (md5 (L.fromChunks [bstr]))
       return (Just (idstr,md5str))
       
+{- 
 -- |  
 onefile :: Handle -> FilePath -> IO ()   
 onefile fh fp  = do 
@@ -122,7 +126,7 @@ onefile fh fp  = do
       let etime = modificationTime fs
           utctime = posixSecondsToUTCTime (realToFrac etime)
       hPutStrLn fh ( idstr ++  " " ++ md5str ++ " " ++ show fp )
-      
+  -}    
 
      
 -- | using attoparsec without any built-in xml support 
