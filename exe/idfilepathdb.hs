@@ -93,7 +93,7 @@ dbdiffwork = do
   let makedb = M.fromList . map splitfunc . lines 
       (newdb,olddb) = (makedb newdbstr, makedb olddbstr) 
      
-  mapM_ print (M.toList (checkdiff olddb newdb))     
+  print (M.toList (checkdiff olddb newdb))     
   -- print newdb 
   -- print olddb 
   
