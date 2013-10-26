@@ -50,14 +50,7 @@ getFileIDList = do
   b <- liftIO $ doesFileExist fp 
   if b 
     then do 
-      -- tempdir <- liftIO $ getTemporaryDirectory
-      -- let tempiddb = tempdir FP.</> "hoodleiddb.dat"
-      -- liftIO $ copyFile fp tempiddb
-      -- str <- liftIO $ readFile tempiddb
       bstr <- liftIO $ runResourceT (sourceFile fp $$ consume)
-      -- h <- liftIO $ openFile fp ReadMode 
-      -- bstr <- liftIO $ B.hGetContents h 
-      -- liftIO $ hClose h 
       liftIO $ putStrLn $ " length = " ++ show (length bstr)
       let str = (L.unpack . L.fromChunks) bstr 
       let ls = lines str 
@@ -65,7 +58,7 @@ getFileIDList = do
           pathmap = M.fromList alist
       return pathmap
     else 
-      fail "no id map" -- eturn Nothing 
+      fail "no id map" 
 
 -- | using attoparsec without any built-in xml support 
 checkVersionAndGetIfHigherVersion :: B.ByteString -> EitherT String IO  Hoodle 
@@ -87,12 +80,7 @@ getIDMD5 fp  = do
       utctime = posixSecondsToUTCTime (realToFrac etime)
   let idstr = B.unpack (view hoodleID h)
       md5str = show (md5 (L.fromChunks [bstr]))
-      --     nfilename = "UUID_"++idstr++"_MD5Digest_"++md5str++"_ModTime_"++(show utctime) ++ ".hdl"
-      -- B.writeFile nfilename bstr 
   return (idstr,md5str)
-  --    hPutStrLn fh ( idstr ++  " " ++ md5str ++ " " ++ show fp )
-
-
 
 action :: MVar UTCTime -> Event -> IO () 
 action tref ev = do
@@ -112,31 +100,16 @@ action tref ev = do
     idmd5lst <- mapM getIDMD5 nfilelst
     let fileidmd5lst =  zip nfilelst idmd5lst 
     let npathmap = foldr (\(f,(i,s)) m -> M.insert i (s,f) m) pathmap fileidmd5lst 
-    -- mapM_ (liftIO . print) (M.toList npathmap)
     let dbfile = homedir FP.</> "Dropbox" FP.</> "hoodleiddb.dat"
-        
         rstr = (L.pack . intercalate "\n" . map (\(i,(s,f))->i++" "++s++" "++show f))
                  (M.toList npathmap)
     liftIO $ runResourceT $ sourceLbs rstr $$ sinkFile dbfile 
-    -- --     liftIO $ withFile  dbfile WriteMode $ \h -> do 
     liftIO $ print "done"
-    -- liftIO $ modifyMVar_ tref (\_ -> return ctime) 
     liftIO $ putMVar tref ctime
-    --       writeIORef tref ctime 
     
   case e of 
     Left err -> putStrLn err 
     Right () -> return ()
-{-
-      -- print pathmap 
-      case mpathmap of 
-        Nothing -> return () 
-        Just pathmap -> do 
-          -- system "idfilepathdb" 
-
--}
-
-
 
 main :: IO () 
 main = do 
@@ -148,7 +121,7 @@ main = do
   let wd = fromString homedir </> "Dropbox" </> "hoodle"
 
   man <- startManager
-  watchTree man wd (const True) (action tref) -- (\x -> threadDelay 1000000 >> print x )
+  watchTree man wd (const True) (action tref) 
   print "press return to stop"
   getLine 
   print "watching stopped, press return to exit"

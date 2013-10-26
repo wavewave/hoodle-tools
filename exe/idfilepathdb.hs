@@ -1,41 +1,23 @@
 {-# LANGUAGE OverloadedStrings, DeriveDataTypeable #-}
 -- 
--- testing program for attoparsec and sax hoodle parser
+-- uuid,md5hash,filepath map utility  
 -- 
 import           Control.Applicative ((<$>))
 import           Control.Lens
-import           Control.Monad
-import           Control.Monad.Trans.Maybe 
 import           Data.Attoparsec 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import qualified Data.Map as M
-import           Data.Maybe (mapMaybe, isNothing, fromJust)
--- import           Data.Foldable 
-import           Data.Time.Clock
-import           Data.Time.Clock.POSIX
 import           Data.Digest.Pure.MD5
 import           System.Directory
 import           System.FilePath
-import           System.FilePath.Posix
-import           System.Environment 
-import           System.IO
-import           System.Posix.Files 
 import           System.Process
-
 import Data.Data
 import System.Console.CmdArgs
--- 
 import Data.Hoodle.Simple
--- 
 import Text.Hoodle.Parse.Attoparsec 
-import Graphics.Hoodle.Render
-import Graphics.Hoodle.Render.Type
-import Graphics.Rendering.Cairo 
 -- 
-
-
-
+import DiffDB
 
 data IdFilePathDB = AllFiles { hoodlehome :: FilePath }
                   | SingleFile { hoodlehome :: FilePath 
@@ -84,7 +66,6 @@ splitfunc str =
 dbdiffwork :: IO ()
 dbdiffwork = do 
   homedir <- getHomeDirectory 
-  tmpdir <- getTemporaryDirectory 
   let newdbfile = homedir </> "Dropbox" </> "hoodleiddb.dat"
       olddbfile = homedir </> "Dropbox" </> "hoodleiddb.dat.old"
    
@@ -94,31 +75,7 @@ dbdiffwork = do
       (newdb,olddb) = (makedb newdbstr, makedb olddbstr) 
      
   print (M.toList (checkdiff olddb newdb))     
-  -- print newdb 
-  -- print olddb 
-  
-  
-data DiffType = Same 
-              | RightNew (String,FilePath) 
-              | LeftNew (String,FilePath) 
-              | Conflict (String,FilePath) (String,FilePath)  
-              deriving (Show,Eq) 
-
-checkdiff :: M.Map String (String,FilePath) 
-          -> M.Map String (String,FilePath) 
-          -> M.Map String DiffType
-checkdiff olddb newdb = 
-  let oks = M.keys olddb 
-      nks = M.keys newdb
-      ks = oks ++ nks
-      rightnew k = (k,(RightNew . fromJust) (M.lookup k newdb))
-      compf k = case (M.lookup k olddb,M.lookup k newdb) of  
-        (Nothing,Nothing) -> Nothing
-        (Just v,Nothing) -> Just (k,LeftNew v)
-        (Nothing,Just v) -> Just (k,RightNew v)
-        (Just v,Just v') -> 
-          if v == v' then Just (k,Same) else Just (k,Conflict v v')
-  in (M.fromList . filter ((/=Same).snd) . mapMaybe compf) ks
+    
 
 singlefilework :: FilePath -> FilePath -> IO ()
 singlefilework hdir oldfp = do 
