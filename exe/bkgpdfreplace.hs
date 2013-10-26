@@ -16,7 +16,7 @@ import System.Directory
 import System.Environment
 import System.FilePath 
 -- from hoodle-platform 
-import Data.Hoodle.Simple 
+import Data.Hoodle.Simple as S
 import Text.Hoodle.Parse.Attoparsec 
 import Text.Hoodle.Builder 
 -- from this package
@@ -50,8 +50,6 @@ main = do
       alist = map splitfunc ls
       pathmap = M.fromList alist 
       mpath = M.lookup hdlid pathmap 
-  -- mapM_ print alist -- pathmap 
-  -- print mpath 
   case mpath of 
     Nothing -> error (" no such id = " ++ hdlid )
     Just hdlfile -> do 
@@ -68,16 +66,9 @@ main = do
           L.writeFile hdlfile . builder $ nhoo 
 
 
--- 45041c0b-43bc-4608-b059-4e3045875d2f
-
-{-
--}
-
 createPage :: Dimension -> Int -> Page
 createPage dim n = let bkg = BackgroundEmbedPdf "embedpdf" n 
                    in Page dim bkg [emptyLayer]
-
-
 
 
 -- | 
@@ -90,11 +81,16 @@ embedPDFInHoodle pdffile hdl = do
         pgs = view pages hdl 
         pg1 = head pgs 
         dim = view dimension pg1
-        npg = length pgs 
+        -----------
+        npg = foldl f 0 pgs
+                where f n pg = let bkg = view S.background pg
+                               in case bkg of 
+                                    BackgroundEmbedPdf _ m -> if n < m then m else n 
+                                    _ -> n 
+        -- npg = length pgs 
         nhdl1 = set embeddedPdf ebdsrc hdl
-
+    putStrLn $ " npg = " ++ show npg
     cpath_pdffile <- canonicalizePath pdffile 
-    
     mdoc <- Poppler.documentNewFromFile ("file://localhost" ++ cpath_pdffile) Nothing
     case mdoc of 
       Nothing -> return hdl 
@@ -103,47 +99,6 @@ embedPDFInHoodle pdffile hdl = do
         let npgs = map (createPage dim) [npg+1,npg+2..n] 
         print n 
         return (set pages (pgs++npgs) nhdl1) 
-
-
-    --  if (length pgs < n) then 
-
-
-{-
-            npgs = (IM.fromAscList . replacePDFPages) pgs 
-        (return . set gembeddedpdf ebdsrc . set gpages npgs) hdl -}
-
-    -- let cmdargs =  [fnstr, "cat"] ++ pglst ++ ["output", "-"]
-    -- print cmdargs 
-
-{-    let pgs = (IM.toAscList . view gpages) hdl  
-        mfn = findFirstPDFFile pgs
-        allpdfpg = findAllPDFPages pgs 
-        
-    case mfn of 
-      Nothing -> return hdl 
-      Just fn -> do 
-        let fnstr = B.unpack fn 
-            pglst = map show allpdfpg 
-            cmdargs =  [fnstr, "cat"] ++ pglst ++ ["output", "-"]
-        print cmdargs 
-        (_,Just hout,_,_) <- createProcess (proc "pdftk" cmdargs) { std_out = CreatePipe } 
-        bstr <- L.hGetContents hout
-        let b64str = (encode . concat . L.toChunks) bstr 
-            ebdsrc = Just ("data:application/x-pdf;base64," <> b64str)
-            npgs = (IM.fromAscList . replacePDFPages) pgs 
-        (return . set gembeddedpdf ebdsrc . set gpages npgs) hdl -}
-
-
--- print "parsed"
-{-      let fstpage = head (hoodle_pages hoo) 
-          Dim w h = page_dim fstpage 
-          cairowork s = renderWith s (cairoDrawPage fstpage) 
-      let action 
-            | mod == "svg" = withSVGSurface outfile w h cairowork 
-            | mod == "pdf" = withPDFSurface outfile w h cairowork
-            | otherwise = return () 
-      action 
--}                            
 
 -- | 
 attoparsec :: FilePath -> IO (Maybe Hoodle)
