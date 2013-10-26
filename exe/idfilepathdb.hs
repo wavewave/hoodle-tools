@@ -1,28 +1,45 @@
-{-# LANGUAGE OverloadedStrings, DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings #-} 
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- 
 -- uuid,md5hash,filepath map utility  
 -- 
 import           Control.Applicative ((<$>))
 import           Control.Lens
+import           Control.Monad.Trans (liftIO)
+import           Control.Monad.Trans.Either 
 import           Data.Attoparsec 
+import           Data.Aeson.Parser (json)
+import           Data.Aeson.Types  (parseJSON, parseEither)
+import           Data.Aeson.Encode.Pretty (encodePretty)
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
+import           Data.Conduit (($$+-),runResourceT)
+import           Data.Conduit.List (consume)
+import           Data.Data
+import qualified Data.List as DL 
 import qualified Data.Map as M
+import           Data.Monoid ((<>))
 import           Data.Digest.Pure.MD5
+import qualified Network.HTTP.Conduit as N
+import           System.Console.CmdArgs
 import           System.Directory
 import           System.FilePath
 import           System.Process
-import Data.Data
-import System.Console.CmdArgs
-import Data.Hoodle.Simple
-import Text.Hoodle.Parse.Attoparsec 
+import           System.IO (stdin)
 -- 
-import DiffDB
+import           Data.Hoodle.Simple
+import           Text.Hoodle.Parse.Attoparsec 
+-- 
+import           DiffDB
 
 data IdFilePathDB = AllFiles { hoodlehome :: FilePath }
                   | SingleFile { hoodlehome :: FilePath 
                                , singlefilename :: FilePath } 
                   | DBDiff
+                  | DBSync { remoteURL :: String 
+                           , remoteID :: String 
+                           , remotePassword :: String } 
                   deriving (Show,Data,Typeable)
 
 allfiles :: IdFilePathDB 
@@ -37,9 +54,15 @@ singlefile =
   
 dbdiff :: IdFilePathDB 
 dbdiff = DBDiff
+
+dbsync :: IdFilePathDB 
+dbsync = DBSync { remoteURL = def &= typ "URL" &= argPos 0
+                , remoteID = def &= typ "ID" &= argPos 1
+                , remotePassword = def &= typ "PASSWORD" &= argPos 2
+                }
   
 mode :: IdFilePathDB
-mode = modes [allfiles, singlefile, dbdiff] 
+mode = modes [allfiles, singlefile, dbdiff, dbsync ] 
 
 main :: IO () 
 main = do 
@@ -48,6 +71,7 @@ main = do
     AllFiles hdir      -> allfilework hdir 
     SingleFile hdir fp -> singlefilework hdir fp 
     DBDiff             -> dbdiffwork
+    DBSync url idee pw -> dbsyncwork url idee pw
   
 allfilework :: FilePath -> IO ()
 allfilework hdir = do 
@@ -62,19 +86,6 @@ splitfunc str =
       str3 = read (tail rest2)
   in (str1,(str2,str3))
 
-
-dbdiffwork :: IO ()
-dbdiffwork = do 
-  homedir <- getHomeDirectory 
-  let newdbfile = homedir </> "Dropbox" </> "hoodleiddb.dat"
-      olddbfile = homedir </> "Dropbox" </> "hoodleiddb.dat.old"
-   
-  newdbstr <- readFile newdbfile 
-  olddbstr <- readFile olddbfile
-  let makedb = M.fromList . map splitfunc . lines 
-      (newdb,olddb) = (makedb newdbstr, makedb olddbstr) 
-     
-  print (M.toList (checkdiff olddb newdb))     
     
 
 singlefilework :: FilePath -> FilePath -> IO ()
@@ -119,4 +130,56 @@ checkVersionAndGetIfHigherVersion bstr = do
         then return (Left "low version") 
         else return (parseOnly hoodle bstr)
 
+
+dbdiffwork :: IO ()
+dbdiffwork = do 
+  homedir <- getHomeDirectory 
+  let newdbfile = homedir </> "Dropbox" </> "hoodleiddb.dat"
+      olddbfile = homedir </> "Dropbox" </> "hoodleiddb.dat.old"
+   
+  newdbstr <- readFile newdbfile 
+  olddbstr <- readFile olddbfile
+  let makedb = M.fromList . map splitfunc . lines 
+      (newdb,olddb) = (makedb newdbstr, makedb olddbstr) 
+  (L.putStrLn . encodePretty) (checkdiff olddb newdb)
+
+dbsyncwork :: String -> String -> String -> IO ()
+dbsyncwork url idee pwd = do 
+  putStrLn ("username=" ++ idee ++ "&password=" ++ pwd)
+  bstr <- B.hGetContents stdin 
+  r <- runEitherT $ do
+    v <- hoistEither (parseOnly json bstr)
+    hoistEither (parseEither parseJSON v)
+  case r of 
+    Left err -> putStrLn err
+    Right (m :: M.Map String DiffType) -> do
+      request' <- N.parseUrl (url <> "/auth/page/hashdb/login")
+      let crstr = B.pack ("username=" ++ idee ++ "&password=" ++ pwd)
+          requestauth = request' 
+            { N.method = "POST" 
+            , N.requestHeaders = 
+                ("Content-Type","application/x-www-form-urlencoded") 
+                : N.requestHeaders request'   
+            , N.requestBody = N.RequestBodyBS crstr
+            } 
+      -- print request 
+      mck <- runResourceT $ N.withManager $ \manager -> do  
+               response <- N.http requestauth manager
+               return (DL.lookup "Set-Cookie" (N.responseHeaders response))
+      case mck of 
+        Nothing -> return()
+        Just ck -> do 
+          request'' <- N.parseUrl (url <> "/listfile")
+          let requesttask = request'' 
+                { N.method = "GET"
+                , N.requestHeaders = ("Cookie",ck) : N.requestHeaders request''
+                }
+          runResourceT $ N.withManager $ \manager -> do  
+            response <- N.http requesttask manager
+            content <- N.responseBody response $$+- consume 
+            liftIO $ print content  
+        
+      
+      
+      return ()
    
