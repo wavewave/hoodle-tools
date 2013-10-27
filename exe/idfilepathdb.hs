@@ -90,6 +90,7 @@ splitfunc str =
 
 singlefilework :: FilePath -> FilePath -> IO ()
 singlefilework hdir oldfp = do 
+  putStrLn ("working for " ++ oldfp)
   homedir <- getHomeDirectory 
   tmpdir <- getTemporaryDirectory 
   let origdbfile = homedir </> "Dropbox" </> "hoodleiddb.dat"
@@ -145,41 +146,42 @@ dbdiffwork = do
 
 dbsyncwork :: String -> String -> String -> IO ()
 dbsyncwork url idee pwd = do 
-  putStrLn ("username=" ++ idee ++ "&password=" ++ pwd)
-  bstr <- B.hGetContents stdin 
-  r <- runEitherT $ do
-    v <- hoistEither (parseOnly json bstr)
-    hoistEither (parseEither parseJSON v)
-  case r of 
-    Left err -> putStrLn err
-    Right (m :: M.Map String DiffType) -> do
-      request' <- N.parseUrl (url <> "/auth/page/hashdb/login")
-      let crstr = B.pack ("username=" ++ idee ++ "&password=" ++ pwd)
-          requestauth = request' 
-            { N.method = "POST" 
-            , N.requestHeaders = 
-                ("Content-Type","application/x-www-form-urlencoded") 
-                : N.requestHeaders request'   
-            , N.requestBody = N.RequestBodyBS crstr
-            } 
-      -- print request 
-      mck <- runResourceT $ N.withManager $ \manager -> do  
-               response <- N.http requestauth manager
-               return (DL.lookup "Set-Cookie" (N.responseHeaders response))
-      case mck of 
-        Nothing -> return()
-        Just ck -> do 
-          request'' <- N.parseUrl (url <> "/listfile")
-          let requesttask = request'' 
-                { N.method = "GET"
-                , N.requestHeaders = ("Cookie",ck) : N.requestHeaders request''
-                }
-          runResourceT $ N.withManager $ \manager -> do  
-            response <- N.http requesttask manager
-            content <- N.responseBody response $$+- consume 
-            liftIO $ print content  
-        
-      
-      
-      return ()
+  -- putStrLn ("username=" ++ idee ++ "&password=" ++ pwd)
+ 
+  -- r <- runEitherT $ do
+  --   v <- hoistEither (parseOnly json bstr)
+  --  hoistEither (parseEither parseJSON v)
+  {- case r of 
+    Left err -> putStrLn err           
+    Right (m :: M.Map String DiffType) -> do -}
+          
+    bstr <- B.hGetContents stdin
+    request' <- N.parseUrl (url <> "/auth/page/hashdb/login")
+    let crstr = B.pack ("username=" ++ idee ++ "&password=" ++ pwd)
+        requestauth = request' 
+          { N.method = "POST" 
+          , N.requestHeaders = 
+              ("Content-Type","application/x-www-form-urlencoded") 
+              : N.requestHeaders request'   
+          , N.requestBody = N.RequestBodyBS crstr
+          } 
+    -- print request 
+    mck <- runResourceT $ N.withManager $ \manager -> do  
+             response <- N.http requestauth manager
+             return (DL.lookup "Set-Cookie" (N.responseHeaders response))
+    case mck of 
+      Nothing -> return()
+      Just ck -> do 
+        request'' <- N.parseUrl (url <> "/syncdb")
+        let requesttask = request'' 
+              { N.method = "POST"
+              , N.requestHeaders = ("Content-Type", "application/json") 
+                                   : ("Cookie",ck) 
+                                   : N.requestHeaders request''
+              , N.requestBody = N.RequestBodyBS bstr
+              }
+        runResourceT $ N.withManager $ \manager -> do  
+          response <- N.http requesttask manager
+          content <- N.responseBody response $$+- consume 
+          liftIO $ print content  
    
