@@ -35,10 +35,11 @@ splitfunc str =
 main :: IO ()   
 main = do 
   args <- getArgs 
-  when (length args /= 2) $ error "bkgpdfreplace hdlid pdffile"   
+  when (length args /= 3) $ error "bkgpdfreplace hoodlehome hdlid pdffile"   
   initGUI
-  let hdlid = args !! 0 
-      pdffile = args !! 1
+  let hoodlehome = args !! 0 
+      hdlid = args !! 1 
+      pdffile = args !! 2
   homedir <- getHomeDirectory
   let hdldb = homedir </> "Dropbox" </> "hoodleiddb.dat"
 
@@ -53,17 +54,18 @@ main = do
   case mpath of 
     Nothing -> error (" no such id = " ++ hdlid )
     Just hdlfile -> do 
-      let (_,hdlfilename) = splitFileName hdlfile
+      let fullhdlfile = hoodlehome </> hdlfile 
+      let (_,hdlfilename) = splitFileName fullhdlfile
       cdir <- getCurrentDirectory 
       putStrLn $ "back up your file to " ++ (cdir </> hdlfilename)
-      copyFile hdlfile (cdir </> hdlfilename) 
+      copyFile fullhdlfile (cdir </> hdlfilename) 
 
-      mh <- attoparsec hdlfile
+      mh <- attoparsec fullhdlfile
       case mh of 
         Nothing -> print "not parsed"
         Just hoo -> do
           nhoo <- embedPDFInHoodle pdffile hoo 
-          L.writeFile hdlfile . builder $ nhoo 
+          L.writeFile fullhdlfile . builder $ nhoo 
 
 
 createPage :: Dimension -> Int -> Page
