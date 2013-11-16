@@ -146,3 +146,15 @@ Executable updateidmap
                    conduit,
                    resourcet
 
+
+Executable networkedit
+  Main-is: networkedit.hs
+  hs-source-dirs: exe
+  ghc-options: 	-Wall -funbox-strict-fields -fno-warn-unused-do-bind -fno-warn-orphans
+  ghc-prof-options: -caf-all -auto-all
+
+  Build-Depends:   base, 
+                   network-simple, 
+                   bytestring,
+                   directory
+
