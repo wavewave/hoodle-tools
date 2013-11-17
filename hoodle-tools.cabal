@@ -156,5 +156,8 @@ Executable networkedit
   Build-Depends:   base, 
                    network-simple, 
                    bytestring,
-                   directory
+                   directory, 
+                   uuid,
+                   process,
+                   filepath
 
