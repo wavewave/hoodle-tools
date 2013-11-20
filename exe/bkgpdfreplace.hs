@@ -2,16 +2,15 @@
 
 import Control.Lens 
 import Control.Monad
-import Control.Monad.State 
+-- import Control.Monad.State 
 import Data.Attoparsec
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as L
 import Data.ByteString.Base64
 import qualified Data.Map as M
-import Graphics.Rendering.Cairo
+-- import Graphics.Rendering.Cairo
 import qualified Graphics.UI.Gtk.Poppler.Document as Poppler 
--- import Graphics.UI.Gtk.Poppler.Page as PopplerPage
-import Graphics.UI.Gtk hiding (get,set)
+import Graphics.UI.Gtk (initGUI) -- hiding (get,set)
 import System.Directory
 import System.Environment
 import System.FilePath 
@@ -20,13 +19,11 @@ import Data.Hoodle.Simple as S
 import Text.Hoodle.Parse.Attoparsec 
 import Text.Hoodle.Builder 
 -- from this package
--- import Graphics.Hoodle.Render.SimpleNew 
--- import Graphics.Hoodle.Render.Simple 
 
 splitfunc :: String -> (String,String)
 splitfunc str = 
   let (str1,rest1) = break (== ' ') str 
-      (str2,rest2) = break (== ' ') (tail rest1)
+      (_str2,rest2) = break (== ' ') (tail rest1)
       str3 = read (tail rest2)
   in (str1,str3)
 
@@ -62,7 +59,7 @@ main = do
 
       mh <- attoparsec fullhdlfile
       case mh of 
-        Nothing -> print "not parsed"
+        Nothing -> putStrLn "not parsed"
         Just hoo -> do
           nhoo <- embedPDFInHoodle pdffile hoo 
           L.writeFile fullhdlfile . builder $ nhoo 

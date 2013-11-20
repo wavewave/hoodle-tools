@@ -30,46 +30,6 @@ Library
                    DiffDB
 
 
-Executable bkgpdfreplace
-  Main-is: bkgpdfreplace.hs
-  hs-source-dirs: exe
-  ghc-options: 	-Wall -funbox-strict-fields -fno-warn-unused-do-bind -fno-warn-orphans
-  ghc-prof-options: -caf-all -auto-all
-
-  Build-Depends:   base, 
-                   mtl,
-                   directory,
-                   filepath, 
-                   strict,
-                   gtk, 
-                   cairo,
-                   pango,
-                   gd,               
-                   attoparsec,
-                   coroutine-object, 
-                   transformers,
-                   transformers-free,
-                   hoodle-types,
-                   hoodle-parser,
-                   xournal-parser,
-                   hoodle-render,
-                   hoodle-builder,
-                   containers,
-                   template-haskell,
-                   bytestring,
-                   base64-bytestring,
-                   either,
-                   errors,
-                   lens,
-                   process,
-                   configurator,
-                   time,
-                   Diff,
-                   dyre,
-                   cereal,
-                   old-locale,
-                   uuid,
-                   poppler
 
 Executable idfilepathdb
   Main-is: idfilepathdb.hs
@@ -146,6 +106,46 @@ Executable updateidmap
                    conduit,
                    resourcet
 
+
+Executable bkgpdfreplace
+  Main-is: bkgpdfreplace.hs
+  hs-source-dirs: exe
+  ghc-options: 	-Wall -funbox-strict-fields -fno-warn-unused-do-bind -fno-warn-orphans
+  ghc-prof-options: -caf-all -auto-all
+  Build-Depends:   base, 
+                   -- mtl,
+                   directory,
+                   filepath, 
+                   -- strict,
+                   gtk, 
+                   -- cairo,
+                   -- pango,
+                   -- gd,               
+                   attoparsec,
+                   -- coroutine-object, 
+                   -- transformers,
+                   -- transformers-free,
+                   hoodle-types,
+                   hoodle-parser,
+                   -- xournal-parser,
+                   -- hoodle-render,
+                   hoodle-builder,
+                   containers,
+                   -- template-haskell,
+                   bytestring,
+                   base64-bytestring,
+                   -- either,
+                   -- errors,
+                   lens,
+                   -- process,
+                   -- configurator,
+                   -- time,
+                   -- Diff,
+                   -- dyre,
+                   -- cereal,
+                   -- old-locale,
+                   -- uuid,
+                   poppler
 
 Executable networkedit
   Main-is: networkedit.hs
