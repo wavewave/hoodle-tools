@@ -1,23 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import Control.Lens 
-import Control.Monad
--- import Control.Monad.State 
-import Data.Attoparsec
+import           Control.Lens 
+import           Control.Monad
+import           Data.Attoparsec
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy.Char8 as L
-import Data.ByteString.Base64
+import           Data.ByteString.Base64
 import qualified Data.Map as M
--- import Graphics.Rendering.Cairo
 import qualified Graphics.UI.Gtk.Poppler.Document as Poppler 
-import Graphics.UI.Gtk (initGUI) -- hiding (get,set)
-import System.Directory
-import System.Environment
-import System.FilePath 
+import           Graphics.UI.Gtk (initGUI) 
+import           System.Directory
+import           System.Environment
+import           System.FilePath 
 -- from hoodle-platform 
-import Data.Hoodle.Simple as S
-import Text.Hoodle.Parse.Attoparsec 
-import Text.Hoodle.Builder 
+import           Data.Hoodle.Simple as S
+import           Text.Hoodle.Parse.Attoparsec 
+import           Text.Hoodle.Builder 
 -- from this package
 
 splitfunc :: String -> (String,String)
@@ -26,7 +24,6 @@ splitfunc str =
       (_str2,rest2) = break (== ' ') (tail rest1)
       str3 = read (tail rest2)
   in (str1,str3)
-
 
 -- | 
 main :: IO ()   
