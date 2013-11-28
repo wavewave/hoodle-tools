@@ -49,7 +49,7 @@ main = do
       B.writeFile fpath bstr
       system (ed ++ " " ++ fpath)
       nbstr <- B.readFile fpath
-      let nbstr_size :: Word32 = (fromIntegral . B.length) bstr
+      let nbstr_size :: Word32 = (fromIntegral . B.length) nbstr
           nbstr_size_binary = (mconcat . LB.toChunks . Bi.encode) nbstr_size
       
 
