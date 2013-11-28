@@ -132,11 +132,15 @@ Executable networkedit
   ghc-options: 	-Wall -funbox-strict-fields -fno-warn-unused-do-bind -fno-warn-orphans
   ghc-prof-options: -caf-all -auto-all
 
-  Build-Depends:   base, 
+  Build-Depends:   base,
                    network-simple, 
                    bytestring,
                    directory, 
                    uuid,
                    process,
-                   filepath
+                   filepath,
+                   monad-loops, 
+                   binary,  
+                   transformers,
+                   mtl
 

@@ -1,8 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
+import           Control.Applicative ((<$>))
+import           Control.Concurrent (threadDelay)
+import           Control.Monad (when,replicateM)
+import           Control.Monad.Loops (unfoldM) 
+import           Control.Monad.Trans
+import           Control.Monad.Trans.Maybe
+import qualified Data.Binary as Bi
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy.Char8 as LB
+import           Data.Foldable as F (mapM_,forM_)
+import           Data.Maybe (catMaybes)
 import           Data.Monoid
 import           Data.UUID.V4
+import           Data.Word
 import           Network.Simple.TCP 
 import           System.Directory
 import           System.FilePath
@@ -15,19 +27,67 @@ main = do
   ed <- getEnv "EDITOR"
   connect arg0 arg1 $ \(sock, addr) -> do
     putStrLn $ "Connection established to " ++ show addr
-    mbstr <- recv sock 100000
-    case mbstr of 
-      Nothing -> putStrLn "no get"
-      Just bstr -> do 
-        B.putStrLn bstr 
-        tdir <- getTemporaryDirectory
-        uuid <- nextRandom
-        let fpath = tdir </> show uuid <.> "txt"
-        B.writeFile fpath bstr
-        system (ed ++ " " ++ fpath)
-        nbstr <- B.readFile fpath
-        send sock (nbstr)
-        return ()
+    -- bstr <- mconcat <$> unfoldM (recv sock 1000)
+    mr <- runMaybeT $ do 
+      bstr <- MaybeT (recv sock 4)
+      let getsize :: B.ByteString -> Word32 
+          getsize = Bi.decode . LB.fromChunks . return
+          size = (fromIntegral . getsize) bstr 
+          
+          go s bstr = do 
+            bstr1 <- MaybeT (recv sock s)
+            let s' = B.length bstr1 
+            if s <= s' 
+              then return (bstr <> bstr1)
+              else go (s-s') (bstr <> bstr1) 
+      go size B.empty 
 
+    F.forM_ mr $ \bstr -> do 
+      tdir <- getTemporaryDirectory
+      uuid <- nextRandom
+      let fpath = tdir </> show uuid <.> "txt"
+      B.writeFile fpath bstr
+      system (ed ++ " " ++ fpath)
+      nbstr <- B.readFile fpath
+      let nbstr_size :: Word32 = (fromIntegral . B.length) bstr
+          nbstr_size_binary = (mconcat . LB.toChunks . Bi.encode) nbstr_size
+      
+
+      send sock (nbstr_size_binary <> nbstr)
+      return ()
+
+
+    -- F.mapM_ B.putStrLn bstr
+    
+  
+    {-
+    bstr' <- recv sock 1000
+    F.mapM_ B.putStrLn bstr'
+    putStrLn "==============="
+
+    bstr'' <- recv sock 1000
+    F.mapM_ B.putStrLn bstr''
+    
+    bstr''' <- recv sock 1000
+    print bstr''' 
+    -}
+
+
+    -- threadDelay 500000
+    -- case mbstr of 
+    --   Nothing -> putStrLn "no get"
+    --   Just bstr -> do 
+    {-
+    when ((not . B.null) bstr) $ do
+      B.putStrLn bstr 
+      tdir <- getTemporaryDirectory
+      uuid <- nextRandom
+      let fpath = tdir </> show uuid <.> "txt"
+      B.writeFile fpath bstr
+      system (ed ++ " " ++ fpath)
+      nbstr <- B.readFile fpath
+      send sock (nbstr)
+      return ()
+    -}
     -- B.putStrLn bstr
     
