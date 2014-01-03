@@ -13,7 +13,8 @@ import qualified Data.ByteString.Lazy.Char8 as LB
 import           Data.Foldable as F (mapM_,forM_)
 import           Data.Maybe (catMaybes)
 import           Data.Monoid
-import           Data.UUID.V4
+import           Data.Time.Clock
+-- import           Data.UUID.V4
 import           Data.Word
 import           Network.Simple.TCP 
 import           System.Directory
@@ -27,7 +28,6 @@ main = do
   ed <- getEnv "EDITOR"
   connect arg0 arg1 $ \(sock, addr) -> do
     putStrLn $ "Connection established to " ++ show addr
-    -- bstr <- mconcat <$> unfoldM (recv sock 1000)
     mr <- runMaybeT $ do 
       bstr <- MaybeT (recv sock 4)
       let getsize :: B.ByteString -> Word32 
@@ -44,50 +44,23 @@ main = do
 
     F.forM_ mr $ \bstr -> do 
       tdir <- getTemporaryDirectory
-      uuid <- nextRandom
-      let fpath = tdir </> show uuid <.> "txt"
+      ctime <- getCurrentTime
+      -- uuid <- nextRandom
+      let fpath =  tdir </> show ctime <.> "txt"
+      let edws = words ed 
+          ed1 = head edws
+          eds = tail edws
+      
+      print (ed1, [eds ++ [fpath] ])
+      
       B.writeFile fpath bstr
-      system (ed ++ " " ++ fpath)
+      (_,_,_,h) <- createProcess (proc ed1 (eds ++ [fpath]))
+      waitForProcess h
+      --  system (ed ++  " " ++ fpath)
       nbstr <- B.readFile fpath
       let nbstr_size :: Word32 = (fromIntegral . B.length) nbstr
           nbstr_size_binary = (mconcat . LB.toChunks . Bi.encode) nbstr_size
-      
-
       send sock (nbstr_size_binary <> nbstr)
       return ()
+      
 
-
-    -- F.mapM_ B.putStrLn bstr
-    
-  
-    {-
-    bstr' <- recv sock 1000
-    F.mapM_ B.putStrLn bstr'
-    putStrLn "==============="
-
-    bstr'' <- recv sock 1000
-    F.mapM_ B.putStrLn bstr''
-    
-    bstr''' <- recv sock 1000
-    print bstr''' 
-    -}
-
-
-    -- threadDelay 500000
-    -- case mbstr of 
-    --   Nothing -> putStrLn "no get"
-    --   Just bstr -> do 
-    {-
-    when ((not . B.null) bstr) $ do
-      B.putStrLn bstr 
-      tdir <- getTemporaryDirectory
-      uuid <- nextRandom
-      let fpath = tdir </> show uuid <.> "txt"
-      B.writeFile fpath bstr
-      system (ed ++ " " ++ fpath)
-      nbstr <- B.readFile fpath
-      send sock (nbstr)
-      return ()
-    -}
-    -- B.putStrLn bstr
-    

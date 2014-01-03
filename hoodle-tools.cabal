@@ -136,7 +136,7 @@ Executable networkedit
                    network-simple, 
                    bytestring,
                    directory, 
-                   uuid,
+                   time,
                    process,
                    filepath,
                    monad-loops, 
