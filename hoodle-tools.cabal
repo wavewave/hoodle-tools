@@ -96,3 +96,25 @@ Executable bkgpdfreplace
                    lens,
                    poppler
 
+Executable migratehdl
+  Main-is: migratehdl.hs
+  hs-source-dirs: exe
+  ghc-options: 	-Wall -Werror -funbox-strict-fields -fno-warn-unused-do-bind -fno-warn-orphans
+  ghc-prof-options: -caf-all -auto-all
+
+  Build-Depends:   attoparsec,
+                   base,
+                   blaze-builder,
+                   bytestring,
+                   directory,
+                   directory-tree,
+                   filepath,
+                   hoodle-builder,
+                   hoodle-core,
+                   hoodle-parser,
+                   hoodle-render,
+                   hoodle-types,
+                   mtl,
+                   process,
+                   uuid,
+                   transformers
